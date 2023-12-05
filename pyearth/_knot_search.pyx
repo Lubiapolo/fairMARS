@@ -314,7 +314,11 @@ cdef class KnotSearchState:
 #     FLOAT_t zeta_squared
     def __init__(KnotSearchState self, FLOAT_t alpha, FLOAT_t beta, FLOAT_t lambda_, 
                  FLOAT_t mu, FLOAT_t upsilon, FLOAT_t phi, FLOAT_t phi_next, 
-                 INDEX_t ord_idx, INDEX_t idx, FLOAT_t zeta_squared):
+                 INDEX_t ord_idx, INDEX_t idx, FLOAT_t zeta_squared,
+                 FLOAT_t alpha1, FLOAT_t beta1, FLOAT_t lambda_1, 
+                 FLOAT_t mu1, FLOAT_t upsilon1, FLOAT_t zeta_squared1,
+                 FLOAT_t alpha2, FLOAT_t beta2, FLOAT_t lambda_2, 
+                 FLOAT_t mu2, FLOAT_t upsilon2, FLOAT_t zeta_squared2):
         self.alpha = alpha
         self.beta = beta
         self.lambda_ = lambda_
@@ -326,32 +330,82 @@ cdef class KnotSearchState:
         self.idx = idx
         self.zeta_squared = zeta_squared
         
+        self.alpha1 = alpha1
+        self.beta1 = beta1
+        self.lambda_1 = lambda_1
+        self.mu1 = mu1
+        self.upsilon1 = upsilon1
+        self.zeta_squared1 = zeta_squared1
+        
+        self.alpha2 = alpha2
+        self.beta2 = beta2
+        self.lambda_2 = lambda_2
+        self.mu2 = mu2
+        self.upsilon2 = upsilon2
+        self.zeta_squared2 = zeta_squared2
+        
     @classmethod
     def alloc(cls):
-        return cls(0., 0., 0., 0., 0., 0., 0., 0, 0, 0.)
+        return cls(0., 0., 0., 0., 0., 0., 0., 0, 0, 0.
+                   , 0., 0., 0., 0, 0, 0.
+                   , 0., 0., 0., 0, 0, 0.)
 
 @cython.final
 cdef class KnotSearchWorkingData:
-    def __init__(KnotSearchWorkingData self, FLOAT_t[:] gamma, FLOAT_t[:] kappa,
-                 FLOAT_t[:] delta_kappa, FLOAT_t[:] chi, FLOAT_t[:] psi,
-                 KnotSearchState state):
+    def __init__(KnotSearchWorkingData self, FLOAT_t ASR_dif_Max, FLOAT_t[:] gamma, FLOAT_t[:] kappa,
+                 FLOAT_t[:] chi, FLOAT_t[:] psi, FLOAT_t[:] delta_kappa,
+                  FLOAT_t[:] gamma1, FLOAT_t[:] kappa1,
+                 FLOAT_t[:] delta_kappa1, FLOAT_t[:] chi1, FLOAT_t[:] psi1,
+                 FLOAT_t[:] gamma2, FLOAT_t[:] kappa2,
+                              FLOAT_t[:] delta_kappa2, FLOAT_t[:] chi2, FLOAT_t[:] psi2,
+                              KnotSearchState state):
+        self.ASR_dif_Max = ASR_dif_Max
         self.gamma = gamma
         self.kappa = kappa
         self.delta_kappa = delta_kappa
         self.chi = chi
         self.psi = psi
         self.state = state
+        
+        self.gamma1 = gamma1
+        self.kappa1 = kappa1
+        self.delta_kappa1 = delta_kappa1
+        self.chi1 = chi1
+        self.psi1 = psi1
+        
+        self.gamma2 = gamma2
+        self.kappa2 = kappa2
+        self.delta_kappa2 = delta_kappa2
+        self.chi2 = chi2
+        self.psi2 = psi2
+
+
+
     
     @classmethod
     def alloc(cls, int max_terms):
+        cdef FLOAT_t ASR_dif_Max = 0
         cdef FLOAT_t[:] gamma = np.empty(shape=max_terms, dtype=np.float)
         cdef FLOAT_t[:] kappa = np.empty(shape=max_terms, dtype=np.float)
         cdef FLOAT_t[:] delta_kappa = np.empty(shape=max_terms, dtype=np.float)
         cdef FLOAT_t[:] chi = np.empty(shape=max_terms, dtype=np.float)
         cdef FLOAT_t[:] psi = np.empty(shape=max_terms, dtype=np.float)
+        
+        cdef FLOAT_t[:] gamma1 = np.empty(shape=max_terms, dtype=np.float)
+        cdef FLOAT_t[:] kappa1 = np.empty(shape=max_terms, dtype=np.float)
+        cdef FLOAT_t[:] delta_kappa1 = np.empty(shape=max_terms, dtype=np.float)
+        cdef FLOAT_t[:] chi1 = np.empty(shape=max_terms, dtype=np.float)
+        cdef FLOAT_t[:] psi1 = np.empty(shape=max_terms, dtype=np.float)
+        
+        cdef FLOAT_t[:] gamma2 = np.empty(shape=max_terms, dtype=np.float)
+        cdef FLOAT_t[:] kappa2 = np.empty(shape=max_terms, dtype=np.float)
+        cdef FLOAT_t[:] delta_kappa2 = np.empty(shape=max_terms, dtype=np.float)
+        cdef FLOAT_t[:] chi2 = np.empty(shape=max_terms, dtype=np.float)
+        cdef FLOAT_t[:] psi2 = np.empty(shape=max_terms, dtype=np.float)
         cdef INDEX_t q = 0
         cdef KnotSearchState state = KnotSearchState.alloc()
-        return cls(gamma, kappa, delta_kappa, chi, psi, state)
+        return cls(ASR_dif_Max, gamma, kappa, delta_kappa, chi, psi, gamma1, kappa1, delta_kappa1, chi1, psi1,
+                   gamma2, kappa2, delta_kappa2, chi2, psi2, state)
     
 @cython.final
 cdef class KnotSearchData:
@@ -512,9 +566,311 @@ cdef inline void fast_update(PredictorDependentData predictor, SingleOutcomeDepe
     working.state.lambda_ += delta_lambda
     working.state.mu += delta_mu
     working.state.upsilon += delta_upsilon
-    
+
+
+@cython.profile(False)
+cdef inline void fast_update_disparity(PredictorDependentData predictor, SingleOutcomeDependentData outcome,
+                        KnotSearchWorkingData working, FLOAT_t[:] p, INDEX_t q, INDEX_t m, INDEX_t r
+                        ,  cnp.ndarray disparity_matrix, FLOAT_t petha, int verbose) except *:
+
+
+    '''
+    fast_update_disprity is for when the Average Square Error (ASR) is to be calculated
+    '''
+    # Calculate all quantities depending on the rows such that
+    # phi >= x > phi_next.
+    # Before this while loop, x[idx] is the greatest x such that x <= phi.
+    # This while loop computes the quantities nu, xi, rho, sigma, tau,
+    # chi, and psi.  It also computes the updates to kappa, lambda, mu,
+    # and upsilon.  The latter updates should not be applied until after
+    # alpha, beta, and gamma have been updated, as they apply to the
+    # next iteration.
+
+    cdef list ASR_dif
+    cdef FLOAT_t zeta_squared1 = 0.
+    cdef FLOAT_t zeta_squared2 = 0.
+    cdef FLOAT_t epsilon_squared1
+    cdef FLOAT_t epsilon_squared2
+    cdef INDEX_t idx, j
+    cdef FLOAT_t nu1 = 0.
+    cdef FLOAT_t nu2 = 0.
+    cdef FLOAT_t xi1 = 0.
+    cdef FLOAT_t xi2 = 0.
+    cdef FLOAT_t rho1 = 0.
+    cdef FLOAT_t rho2 = 0.
+    cdef FLOAT_t sigma1 = 0.
+    cdef FLOAT_t sigma2 = 0.
+    cdef FLOAT_t tau1 = 0.
+    cdef FLOAT_t tau2 = 0.
+    working.chi1[:q] = 0.
+    working.chi2[:q] = 0.
+    working.psi1[:q] = 0.
+    working.psi2[:q] = 0.
+    working.delta_kappa1[:q] = 0.
+    working.delta_kappa2[:q] = 0.
+    cdef FLOAT_t delta_lambda1 = 0.
+    cdef FLOAT_t delta_mu1 = 0.
+    cdef FLOAT_t delta_upsilon1 = 0.
+    cdef FLOAT_t gamma_squared1
+    cdef FLOAT_t theta_gamma1
+    cdef FLOAT_t zeta_epsilon1
+    cdef FLOAT_t tol1 = .9
+    cdef FLOAT_t pidx1, xidx1, widx1, yidx1, qidx1, delta_nu1, \
+        delta_xi1, delta_rho1, delta_sigma1, delta_tau1, delta_psi1, delta_chi1
+
+    cdef FLOAT_t delta_lambda2 = 0.
+    cdef FLOAT_t delta_mu2 = 0.
+    cdef FLOAT_t delta_upsilon2 = 0.
+    cdef FLOAT_t gamma_squared2
+    cdef FLOAT_t theta_gamma2
+    cdef FLOAT_t zeta_epsilon2
+    cdef FLOAT_t tol2 = .9
+    cdef FLOAT_t pidx2, xidx2, widx2, yidx2, qidx2, delta_nu2, \
+        delta_xi2, delta_rho2, delta_sigma2, delta_tau2, delta_psi2, delta_chi2
+
+    ASR_dif = []
+    for j_sen in range(disparity_matrix.shape[1]):
+        num_sens = 0 # number of sensitives
+
+        while predictor.x[working.state.idx] > working.state.phi_next: # don't forget to check this condition
+
+            idx = working.state.idx
+            pidx1 = p[idx]*disparity_matrix[idx, j_sen]
+            xidx1 = predictor.x[idx]*disparity_matrix[idx, j_sen]
+            widx1 = outcome.weight.w[idx]*disparity_matrix[idx, j_sen]
+            yidx1 = outcome.y[idx]*disparity_matrix[idx, j_sen]
+
+
+            if disparity_matrix[idx, j_sen] == 1:
+                disparity_non = 0
+               # num_sens += 1
+            else:
+                disparity_non = 1
+            num_sens = sum(disparity_matrix[:, j_sen])
+
+            pidx2 = p[idx]*disparity_non
+            xidx2 = predictor.x[idx]*disparity_non
+            widx2 = outcome.weight.w[idx]*disparity_non
+            yidx2 = outcome.y[idx]*disparity_non
+
+
+            # In predictor.x[idx] is missing, p[idx] will be zeroed out for protection
+            # (because there will be a present(x[idx]) factor in it)..
+            # Skipping such indices prevents problems if x[idx] is a nan of some kind.
+            if p[idx] != 0.:
+                delta_nu1 = (widx1 ** 2) * (pidx1 ** 2)
+                nu1 += delta_nu1
+                delta_xi1 = delta_nu1 * xidx1
+                xi1 += delta_xi1 # (outcome.weight.w[idx] ** 2) * (p[idx] ** 2) * predictor.x[idx]
+                delta_rho1 = delta_xi1 * xidx1
+                rho1 += delta_rho1 # (outcome.weight.w[idx] ** 2) * (p[idx] ** 2) * (predictor.x[idx] ** 2)
+                delta_tau1 = (widx1 ** 2) * yidx1 * pidx1
+                tau1 += delta_tau1
+                delta_sigma1 = delta_tau1 * xidx1
+                sigma1 += delta_sigma1 # (outcome.weight.w[idx] ** 2) * outcome.y[idx] * p[idx] * predictor.x[idx]
+                delta_lambda1 += delta_xi1 # (outcome.weight.w[idx] ** 2) * (p[idx] ** 2) * predictor.x[idx]
+                delta_mu1 += delta_nu1 #(outcome.weight.w[idx] ** 2) * (p[idx] ** 2)
+                delta_upsilon1 += delta_tau1 # (outcome.weight.w[idx] ** 2) * outcome.y[idx] * p[idx]
+                for j in range(q):
+                    qidx1 = outcome.weight.Q_t[j,idx]
+                    delta_psi1 = qidx1 * widx1 * pidx1
+                    delta_chi1 = delta_psi1 * xidx1
+                    working.chi1[j] += delta_chi1 # outcome.weight.Q_t[j,idx] * widx * pidx * xidx
+                    working.psi1[j] += delta_psi1 # outcome.weight.Q_t[j,idx] * outcome.weight.w[idx] * p[idx]
+                    working.delta_kappa1[j] += delta_psi1 # outcome.weight.Q_t[j,idx] * outcome.weight.w[idx] * p[idx]
+            if p[idx] != 0.:
+                delta_nu2 = (widx2 ** 2) * (pidx2 ** 2)
+                nu2 += delta_nu2
+                delta_xi2 = delta_nu2 * xidx2
+                xi2 += delta_xi2 # (outcome.weight.w[idx] ** 2) * (p[idx] ** 2) * predictor.x[idx]
+                delta_rho2 = delta_xi2 * xidx2
+                rho2 += delta_rho2 # (outcome.weight.w[idx] ** 2) * (p[idx] ** 2) * (predictor.x[idx] ** 2)
+                delta_tau2 = (widx2 ** 2) * yidx2 * pidx2
+                tau2 += delta_tau2
+                delta_sigma2 = delta_tau2 * xidx2
+                sigma2 += delta_sigma2 # (outcome.weight.w[idx] ** 2) * outcome.y[idx] * p[idx] * predictor.x[idx]
+                delta_lambda2 += delta_xi2 # (outcome.weight.w[idx] ** 2) * (p[idx] ** 2) * predictor.x[idx]
+                delta_mu2 += delta_nu2 #(outcome.weight.w[idx] ** 2) * (p[idx] ** 2)
+                delta_upsilon2 += delta_tau2 # (outcome.weight.w[idx] ** 2) * outcome.y[idx] * p[idx]
+                for j in range(q):
+                    qidx2 = outcome.weight.Q_t[j,idx]
+                    delta_psi2 = qidx2 * widx2 * pidx2
+                    delta_chi2 = delta_psi2 * xidx2
+                    working.chi2[j] += delta_chi2 # outcome.weight.Q_t[j,idx] * widx * pidx * xidx
+                    working.psi2[j] += delta_psi2 # outcome.weight.Q_t[j,idx] * outcome.weight.w[idx] * p[idx]
+                    working.delta_kappa2[j] += delta_psi2 # outcome.weight.Q_t[j,idx] * outcome.weight.w[idx] * p[idx]
+
+            # Update idx for next iteration
+            working.state.ord_idx += 1
+            if working.state.ord_idx >= m:
+                break
+            working.state.idx = predictor.order[working.state.ord_idx]
+
+        # Update alpha, beta, and gamma
+        working.state.alpha1 += sigma1 - working.state.phi_next * tau1 + \
+            (working.state.phi - working.state.phi_next) * working.state.upsilon1
+        working.state.beta1 += rho1 + (working.state.phi_next ** 2) * nu1 - 2 * working.state.phi_next * xi1+ \
+            2 * (working.state.phi - working.state.phi_next) * working.state.lambda_1 + \
+            (working.state.phi_next ** 2 - working.state.phi ** 2) * working.state.mu1
+        for j in range(q):
+            working.gamma1[j] += (working.state.phi - working.state.phi_next) * working.kappa1[j] + \
+                                working.chi1[j] - working.state.phi_next * working.psi1[j]
+
+        # Update alpha, beta, and gamma
+        working.state.alpha2 += sigma2 - working.state.phi_next * tau2 + \
+            (working.state.phi - working.state.phi_next) * working.state.upsilon2
+        working.state.beta2 += rho2 + (working.state.phi_next ** 2) * nu2 - 2 * working.state.phi_next * xi2+ \
+            2 * (working.state.phi - working.state.phi_next) * working.state.lambda_2 + \
+            (working.state.phi_next ** 2 - working.state.phi ** 2) * working.state.mu2
+
+        for j in range(q):
+            working.gamma2[j] += (working.state.phi - working.state.phi_next) * working.kappa2[j] + \
+                                working.chi2[j] - working.state.phi_next * working.psi2[j]
+
+
+
+        # Compute epsilon_squared and zeta_squared
+        if working.state.beta1 > 0:
+            gamma_squared1 = dot(working.gamma1, working.gamma1, q)
+            epsilon_squared1 = working.state.beta1 - gamma_squared1
+            if epsilon_squared1 > 0:
+                theta_gamma1 = dot(working.gamma1, outcome.theta, q)
+                zeta_epsilon1 = working.state.alpha1 - theta_gamma1
+
+                working.state.zeta_squared1 = (zeta_epsilon1 ** 2) / epsilon_squared1
+
+            else:
+                working.state.zeta_squared1 = 0.
+        else:
+            # This happens when there are no nonzero values in the
+            # new predictor yet.  It just means we need to wait for
+            # lower knot values.
+            working.state.zeta_squared1 = 0.
+
+        # Compute epsilon_squared and zeta_squared
+        if working.state.beta2 > 0:
+            gamma_squared2 = dot(working.gamma2, working.gamma2, q)
+            epsilon_squared2 = working.state.beta2 - gamma_squared2
+            if epsilon_squared2 > 0:
+                theta_gamma2 = dot(working.gamma2, outcome.theta, q)
+                zeta_epsilon2 = working.state.alpha2 - theta_gamma2
+
+                working.state.zeta_squared2 = (zeta_epsilon2 ** 2) / epsilon_squared2
+
+            else:
+                working.state.zeta_squared2 = 0.
+        else:
+            # This happens when there are no nonzero values in the
+            # new predictor yet.  It just means we need to wait for
+            # lower knot values.
+            working.state.zeta_squared2 = 0.
+
+        # Now zeta_squared is correct for phi_next.
+
+        # Update kappa, lambda, mu, and upsilon
+        for j in range(q):
+            working.kappa1[j] += working.delta_kappa1[j]
+        working.state.lambda_1 += delta_lambda1
+        working.state.mu1 += delta_mu1
+        working.state.upsilon1 += delta_upsilon1
+
+        if working.state.zeta_squared >= outcome.sse_:
+            # Sometimes this can happen because of numerical issues in
+            # the fast update process.  These occur when the new potential
+            # predictor column is close to linear dependence on previous
+            # columns.  In that case, correct everything so that we can move
+            # on.
+
+            if verbose >= 2:
+                print('Encountered numerical problem in knot search.  The problem is being corrected by a slower computation.')
+                if verbose >= 3:
+                    print('Potentially helpful numbers if you are really interested:')
+                    # print('zeta_squared = %f') % zeta_squared
+                    # print('omega_minus_theta_squared = %f' % outcome.sse_)
+                    # print('epsilon_squared =',  working.state.beta - np.dot(working.gamma[:q], working.gamma[:q]))
+                    # print('alpha =', working.state.alpha)
+                    # print('gamma * theta =', dot(working.gamma, outcome.theta, q))
+                    # print('beta =', working.state.beta)
+                    # print('gamma^2 = ', dot(working.gamma, working.gamma, q))
+                    # print('phi = ' % working.state.phi)
+                    # print('phi_next = ' % working.state.phi_next)
+                    # print('p = %d' % p)
+                    # print('q = %d' % q)
+                    # print('m = %d' % m)
+                    # print('r = %d' % r)
+                    # print('k = %d' % k)
+                    # print('i = %d' % i)
+            working.state.zeta_squared1 = 0.
+            working.state.alpha1 = dot(working.gamma1, outcome.theta, q)
+            working.state.beta1 = dot(working.gamma1, working.gamma1, q)
+
+
+            # Add up objectives
+        zeta_squared1 += working.state.zeta_squared1
+
+        # Update kappa, lambda, mu, and upsilon
+        for j in range(q):
+            working.kappa2[j] += working.delta_kappa2[j]
+        working.state.lambda_2 += delta_lambda2
+        working.state.mu2 += delta_mu2
+        working.state.upsilon2 += delta_upsilon2
+
+        if working.state.zeta_squared >= outcome.sse_:
+            # Sometimes this can happen because of numerical issues in
+            # the fast update process.  These occur when the new potential
+            # predictor column is close to linear dependence on previous
+            # columns.  In that case, correct everything so that we can move
+            # on.
+
+            if verbose >= 2:
+                print('Encountered numerical problem in knot search.  The problem is being corrected by a slower computation.')
+                if verbose >= 3:
+                    print('Potentially helpful numbers if you are really interested:')
+                    # print('zeta_squared = %f') % zeta_squared
+                    # print('omega_minus_theta_squared = %f' % outcome.sse_)
+                    # print('epsilon_squared =',  working.state.beta - np.dot(working.gamma[:q], working.gamma[:q]))
+                    # print('alpha =', working.state.alpha)
+                    # print('gamma * theta =', dot(working.gamma, outcome.theta, q))
+                    # print('beta =', working.state.beta)
+                    # print('gamma^2 = ', dot(working.gamma, working.gamma, q))
+                    # print('phi = ' % working.state.phi)
+                    # print('phi_next = ' % working.state.phi_next)
+                    # print('p = %d' % p)
+                    # print('q = %d' % q)
+                    # print('m = %d' % m)
+                    # print('r = %d' % r)
+                    # print('k = %d' % k)
+                    # print('i = %d' % i)
+            working.state.zeta_squared2 = 0.
+            working.state.alpha2 = dot(working.gamma2, outcome.theta, q)
+            working.state.beta2 = dot(working.gamma2, working.gamma2, q)
+
+
+            # Add up objectives
+        zeta_squared1 += working.state.zeta_squared1
+        zeta_squared2 += working.state.zeta_squared2
+        if num_sens==0: #all blacks are on one side
+            #TODO: penalty term TBD
+            ASR_dif.append(0)
+        else:
+            ASR_dif.append(abs(zeta_squared1/num_sens - zeta_squared2/(m - num_sens)))
+
+        # if < , returns min
+        # for Average, we need more changes.
+
+        #if ASR_dif > working.ASR_dif_Max:
+        #    working.ASR_dif_Max = ASR_dif
+        #for Max or min, change mean to Max, or min
+        working.ASR_dif_Max = np.mean(ASR_dif)
+
+
 cpdef tuple knot_search(KnotSearchData data, FLOAT_t[:] candidates, FLOAT_t[:] p, INDEX_t q, INDEX_t m, 
-                 INDEX_t r, INDEX_t n_outcomes, int verbose):
+                 INDEX_t r, INDEX_t n_outcomes, int verbose, cnp.ndarray disparity_matrix, FLOAT_t petha):
+    '''
+    disparity_index contains the index of columns that are sensitive in terms of disparity 
+    hogher petha indicates higher disparity removal and otherwise around 
+    '''
+    
     cdef KnotSearchReadOnlyData constant = data.constant
     cdef PredictorDependentData predictor = constant.predictor
     cdef list outcomes = constant.outcome.outcomes
@@ -581,7 +937,26 @@ cpdef tuple knot_search(KnotSearchData data, FLOAT_t[:] candidates, FLOAT_t[:] p
             
             # Update workingdata for the new candidate knot
             fast_update(predictor, outcome, working, p, q, m, r)
-            
+
+            if petha != 0 and len(disparity_matrix) != 0:
+                for j in range(n_outcomes):
+                    working = workings[j]
+                    working.state.phi_next = phi_next
+                    working.state.alpha = 0.
+                    working.state.beta = 0.
+                    for i in range(q):
+                        working.gamma[i] = 0.
+                    for i in range(q):
+                        working.kappa[i] = 0.
+                    working.state.lambda_ = 0.
+                    working.state.mu = 0.
+                    working.state.upsilon = 0.
+                    working.state.ord_idx = 0
+                    working.state.idx = predictor.order[working.state.ord_idx]
+
+
+                fast_update_disparity(predictor, outcome, working, p, q, m, r, disparity_matrix, petha, verbose)
+
             if working.state.zeta_squared >= outcome.sse_:
                 # Sometimes this can happen because of numerical issues in 
                 # the fast update process.  These occur when the new potential
@@ -622,8 +997,15 @@ cpdef tuple knot_search(KnotSearchData data, FLOAT_t[:] candidates, FLOAT_t[:] p
 
 
             # Add up objectives
-            zeta_squared += working.state.zeta_squared
+            #TODO penalty sign TBD
+            #if working.ASR_dif_Max!=0:
+            #    print 'Component 1=' , working.state.zeta_squared
+            #    print 'Component 2=' , working.ASR_dif_Max
+
+            zeta_squared += working.state.zeta_squared +  petha * working.ASR_dif_Max
+
         # Compare against best result so far
+
         if zeta_squared > best_zeta_squared:
             best_knot_index = k
             best_knot = phi_next
@@ -673,5 +1055,3 @@ cpdef tuple knot_search(KnotSearchData data, FLOAT_t[:] candidates, FLOAT_t[:] p
     
     # Return
     return best_knot, best_knot_index, loss
-
-
