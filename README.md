@@ -48,20 +48,6 @@ pyplot.title('Simple Earth Example')
 pyplot.show()
  ```
  
-## Other Implementations
-
-I am aware of the following implementations of Multivariate Adaptive Regression Splines:
-
-1. The R package earth (coded in C by Stephen Millborrow): http://cran.r-project.org/web/packages/earth/index.html
-2. The R package mda (coded in Fortran by Trevor Hastie and Robert Tibshirani): http://cran.r-project.org/web/packages/mda/index.html
-3. The Orange data mining library for Python (uses the C code from 1): http://orange.biolab.si/
-4. The xtal package (uses Fortran code written in 1991 by Jerome Friedman): http://www.ece.umn.edu/users/cherkass/ee4389/xtalpackage.html
-5. MARSplines by StatSoft: http://www.statsoft.com/textbook/multivariate-adaptive-regression-splines/
-6. MARS by Salford Systems (also uses Friedman's code): http://www.salford-systems.com/products/mars
-7. ARESLab (written in Matlab by Gints Jekabsons): http://www.cs.rtu.lv/jekabsons/regression.html
-
-The R package earth was most useful to me in understanding the algorithm, particularly because of Stephen Milborrow's 
-thorough and easy to read vignette (http://www.milbo.org/doc/earth-notes.pdf).
  
 ## References
 
