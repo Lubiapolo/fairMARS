@@ -1,4 +1,5 @@
 cimport cython
+cimport numpy as cnp
 from _types cimport FLOAT_t, INT_t, INDEX_t, BOOL_t
 from _basis cimport BasisFunction
 from _qr cimport UpdatingQT
@@ -70,14 +71,42 @@ cdef class KnotSearchState:
     cdef public INDEX_t idx
     cdef public FLOAT_t zeta_squared
 
+    cdef public alpha1
+    cdef public beta1
+    cdef public lambda_1
+    cdef public mu1
+    cdef public upsilon1
+    cdef public zeta_squared1
+    cdef public alpha2
+    cdef public beta2
+    cdef public lambda_2
+    cdef public mu2
+    cdef public upsilon2
+    cdef public zeta_squared2
+
+
 @cython.final
 cdef class KnotSearchWorkingData:
+    cdef readonly FLOAT_t ASR_dif_Max
     cdef readonly FLOAT_t[:] gamma
     cdef readonly FLOAT_t[:] kappa
     cdef readonly FLOAT_t[:] delta_kappa
     cdef readonly FLOAT_t[:] chi
     cdef readonly FLOAT_t[:] psi
     cdef KnotSearchState state
+
+    cdef readonly FLOAT_t[:] gamma1
+    cdef readonly FLOAT_t[:] kappa1
+    cdef readonly FLOAT_t[:] delta_kappa1
+    cdef readonly FLOAT_t[:] chi1
+    cdef readonly FLOAT_t[:] psi1
+
+    cdef readonly FLOAT_t[:] gamma2
+    cdef readonly FLOAT_t[:] kappa2
+    cdef readonly FLOAT_t[:] delta_kappa2
+    cdef readonly FLOAT_t[:] chi2
+    cdef readonly FLOAT_t[:] psi2
+
 
 @cython.final
 cdef class KnotSearchData:
@@ -90,5 +119,7 @@ cdef w2dot(FLOAT_t[:] w, FLOAT_t[:] x1, FLOAT_t[:] x2, INDEX_t q)
 cdef wdot(FLOAT_t[:] w, FLOAT_t[:] x1, FLOAT_t[:] x2, INDEX_t q)
 cdef inline void fast_update(PredictorDependentData predictor, SingleOutcomeDependentData outcome, 
                         KnotSearchWorkingData working, FLOAT_t[:] p, INDEX_t q, INDEX_t m ,INDEX_t r) except *
-cpdef tuple knot_search(KnotSearchData data, FLOAT_t[:] candidates, FLOAT_t[:] p, INDEX_t q, INDEX_t m, INDEX_t r, INDEX_t n_outcomes, int verbose)
-
+cdef inline void fast_update_disparity(PredictorDependentData predictor, SingleOutcomeDependentData outcome, 
+                        KnotSearchWorkingData working, FLOAT_t[:] p, INDEX_t q, INDEX_t m, INDEX_t r
+                        , cnp.ndarray disparity_matrix, FLOAT_t petha, int verbose) except *
+cpdef tuple knot_search(KnotSearchData data, FLOAT_t[:] candidates, FLOAT_t[:] p, INDEX_t q, INDEX_t m, INDEX_t r, INDEX_t n_outcomes, int verbose, cnp.ndarray disparity_matrix, FLOAT_t petha)
