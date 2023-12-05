@@ -59,9 +59,12 @@ cdef class ForwardPasser:
                  cnp.ndarray[BOOL_t, ndim=2] missing,
                  cnp.ndarray[FLOAT_t, ndim=2] y,
                  cnp.ndarray[FLOAT_t, ndim=2] sample_weight,
+                 cnp.ndarray[FLOAT_t, ndim=2] disparity_matrix, FLOAT_t petha,
                  **kwargs):
         
         cdef INDEX_t i
+        self.disparity_matrix = disparity_matrix
+        self.petha = petha
         self.X = X
         self.missing = missing
         self.y = y
@@ -425,8 +428,8 @@ cdef class ForwardPasser:
 
                         # Run knot search
                         knot, knot_idx, mse = knot_search(search_data, candidates, p, q, 
-                                                          self.m, len(candidates), self.n_outcomes,
-                                                          self.verbose)
+                                                          self.m, len(candidates), self.n_outcomes, 
+                                                          self.verbose, self.disparity_matrix, self.petha)
                         mse /= self.total_weight
                         knot_idx = candidates_idx[knot_idx]
                         
