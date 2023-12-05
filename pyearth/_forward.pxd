@@ -14,6 +14,8 @@ cdef class ForwardPasser:
     cdef int minspan
     cdef FLOAT_t endspan_alpha
     cdef FLOAT_t minspan_alpha
+    cdef cnp.ndarray disparity_matrix
+    cdef FLOAT_t petha
     cdef int max_terms
     cdef bint allow_linear
     cdef int max_degree
