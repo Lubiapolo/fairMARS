@@ -1,3 +1,4 @@
+from pyearth import linalg_mod
 from ._forward import ForwardPasser
 from ._pruning import PruningPasser, FEAT_IMP_CRITERIA
 from ._util import ascii_table, apply_weights_2d, gcv
@@ -6,6 +7,7 @@ from sklearn.base import RegressorMixin, BaseEstimator, TransformerMixin
 from sklearn.utils.validation import (assert_all_finite, check_is_fitted,
                                       check_X_y)
 import numpy as np
+import statsmodels.api as sm
 from scipy import sparse
 from ._version import get_versions
 __version__ = get_versions()['version']
@@ -516,6 +518,7 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
             sample_weight=None,
             output_weight=None,
             missing=None,
+            disparity_indices=None, petha=0,fair_coef=False,
             xlabels=None, linvars=[]):
         '''
         Fit an Earth model to the input data X and y.
@@ -523,6 +526,8 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
 
         Parameters
         ----------
+        disparity_indices : Indices of the predictors that we want to remove disparity from
+        
         X : array-like, shape = [m, n] where m is the number of samples
             and n is the number of features the training predictors.
             The X parameter can be a numpy array, a pandas DataFrame, a patsy
@@ -576,6 +581,7 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
             If included, must have length n, where n is the number of features.
             Note that column order is used to compute term values and make
             predictions, not column names.
+            :param petha:
 
 
         '''
@@ -587,6 +593,16 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
                 raise ValueError('The length of xlabels is not the '
                                  'same as the number of columns of X')
             self.xlabels_ = xlabels
+
+        if disparity_indices is None:
+            disparity_matrix = None
+        else:
+            disparity_matrix = np.zeros((X.shape[0], len(disparity_indices)))
+            j = 0
+            for ind in disparity_indices:
+                disparity_matrix[:, j] = X[:, ind]
+                j += 1
+
         if self.feature_importance_type is not None:
             feature_importance_type = self.feature_importance_type
             try:
@@ -612,15 +628,15 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
 
         # Do the actual work
         self.forward_pass(X, y,
-                          sample_weight, output_weight, missing,
-                          self.xlabels_, linvars, skip_scrub=True)
+                          sample_weight, output_weight, missing,disparity_matrix,petha,
+                          self.xlabels_, linvars,skip_scrub=True)
         if self.enable_pruning is True:
             self.pruning_pass(X, y,
                               sample_weight, output_weight, missing,
                               skip_scrub=True)
         if hasattr(self, 'smooth') and self.smooth:
             self.basis_ = self.basis_.smooth(X)
-        self.linear_fit(X, y, sample_weight, output_weight, missing,
+        self.linear_fit(X, y, sample_weight, output_weight, missing,disparity_matrix, fair_coef,
                         skip_scrub=True)
         return self
 
@@ -648,8 +664,8 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
 # #         self.basis_ = forward_passer.get_basis()
 #
     def forward_pass(self, X, y=None,
-                     sample_weight=None, output_weight=None,
-                     missing=None,
+                     sample_weight=None, output_weight=None, 
+                     missing=None, disparity_matrix=None, petha=0,
                      xlabels=None, linvars=[], skip_scrub=False):
         '''
         Perform the forward pass of the multivariate adaptive regression
@@ -712,6 +728,8 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
             If included, must have length n, where n is the number of features.
             Note that column order is used to compute term values and make
             predictions, not column names.
+            :param petha:
+            :param disparity_indices:
 
 
         '''
@@ -727,7 +745,7 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
         # Do the actual work
         args = self._pull_forward_args(**self.__dict__)
         forward_passer = ForwardPasser(
-            X, missing, y, sample_weight,
+            X, missing, y, sample_weight, disparity_matrix=disparity_matrix,petha=petha,
             xlabels=self.xlabels_, linvars=linvars, **args)
         forward_passer.run()
         self.forward_pass_record_ = forward_passer.trace()
@@ -968,7 +986,7 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
         return result
 
     def linear_fit(self, X, y=None, sample_weight=None, output_weight=None,
-                   missing=None, skip_scrub=False):
+                   missing=None, disparity_matrix=None, fair_coef=False, skip_scrub=False):
         '''
         Solve the linear least squares problem to determine the coefficients
         of the unpruned basis functions.
@@ -1052,13 +1070,70 @@ class Earth(BaseEstimator, RegressorMixin, TransformerMixin):
             mse0 += np.sum((weighted_y[:, i] -
                             np.average(weighted_y[:, i])) ** 2)
 
-            coef, resid = np.linalg.lstsq(B, weighted_y[:, i])[0:2]
+            if fair_coef:
+
+                #implementing fairness
+                proportions = sum(disparity_matrix)/len(disparity_matrix) #to get the proportion of each race
+                sensitive_weights = 1/proportions #reverse of proportions
+                sensitive_weights = sensitive_weights/np.sum(sensitive_weights) #normalize weights
+                sensitive_weights = np.reshape(sensitive_weights, (len(sensitive_weights), 1))
+                # disparity_matrix = np.reshape(disparity_matrix, (disparity_matrix))
+                # print('sensitive_weights',sensitive_weights)
+
+                # print(sensitive_weights.shape)
+                #finding coefficients of each sensitive group
+                coef_race = []
+                resid_race = []
+                weights_vec = np.zeros((disparity_matrix.shape[0], 1))
+                # sens = 1
+                # print('disparity_matrix', disparity_matrix[:, sens].shape)
+                # print('sensitive_weights',sensitive_weights[sens].shape)
+                # print('weights_vec',weights_vec.shape)
+
+                for sens in range(disparity_matrix.shape[1]):
+                    weights_vec += sensitive_weights[sens]*np.reshape(disparity_matrix[:, sens], (len(disparity_matrix[:, sens]), 1))
+                    # indices = np.where(disparity_matrix[:, sens] == 1)[0]  #a np array with 2 elements. index and type, e.g. finds 1s in each column. row number where each race ==1.  then moves to next column.
+                    # coef_r, resid_r = linalg_mod.lstsq(B[indices, :], weighted_y[indices, i])[0:2] #to get the coeffs for each race[indices][0]
+
+
+                # B = sm.add_constant(B) #adds intercept (library does not add automatically)
+                WLS_model = sm.WLS(weighted_y[:, i], B, weights=weights_vec )
+                WLS_model_fit = WLS_model.fit()
+                # print(WLS_model.params[0].shape)
+                # coef_1 = np.zeros((WLS_model.params[0].shape[0],1))
+                #
+                # coef_1[0, 0] = WLS_model.params[0][-1]
+                # coef_1[1:, 0] = WLS_model.params[0][0:len(WLS_model.params[0])-1]
+                coef = WLS_model_fit.params
+
+                # print('coef', coef)
+
+
+                # for sens in range(disparity_matrix.shape[1]): #calculates weighted coef and weighted resid for all races.
+                #     coef += sensitive_weights[sens] * coef_race[sens] #reverse of proportions * coef of each race.
+
+                print('WLS_model_fit.predict()',WLS_model_fit.predict(B))
+                resid = np.array(np.sum((WLS_model_fit.predict(B) - weighted_y[:, i]) ** 2))
+                # print('resid', resid)
+
+                #resid = np.array([np.sum((np.dot(B, coef_1) - weighted_y[:, i]) ** 2)])
+                # print((np.dot(B, coef_1) - weighted_y[:, i]) ** 2)
+
+
+                # coef, resid = linalg_mod.lstsq(B, weighted_y[:, i])[0:2]
+
+                print('coef', coef)
+                print('resid', resid)
+            else:
+                coef, resid = linalg_mod.lstsq(B, weighted_y[:, i])[0:2]
+
             self.coef_.append(coef)
             if not resid:
                 resid = np.array(
                     [np.sum((np.dot(B, coef) - weighted_y[:, i]) ** 2)])
             resid_.append(resid)
         resid_ = np.array(resid_)
+
         self.coef_ = np.array(self.coef_)
         # Compute the final mse, gcv, rsq, and grsq (may be different from the
         # pruning scores if the model has been smoothed)
