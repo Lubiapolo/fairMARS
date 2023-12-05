@@ -11,9 +11,8 @@ Multivariate Adaptive Regression Splines, see the references below.
 Make sure you have numpy and scikit-learn installed.  Then do the following:
 
 ```
-git clone git://github.com/scikit-learn-contrib/py-earth.git
-cd py-earth
-sudo python setup.py install
+git clone https://github.com/Lubiapolo/fairMARS.git
+%cd py-earth
 ```
 
 ## Usage
