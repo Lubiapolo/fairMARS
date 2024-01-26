@@ -6,7 +6,7 @@ fair py-earth [![Build Status](https://travis-ci.org/scikit-learn-contrib/py-ear
 Make sure you have numpy and scikit-learn installed.  Then do the following:
 
 ```
-git clone https://github.com/Lubiapolo/fairMARS.git
+git clone https://github.com/parianh/fairMARS.git
 %cd py-earth
 ```
 
