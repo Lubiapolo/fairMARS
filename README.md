@@ -1,4 +1,5 @@
-fair py-earth [![Build Status](https://travis-ci.org/scikit-learn-contrib/py-earth.png?branch=master)](https://travis-ci.org/scikit-learn-contrib/py-earth?branch=master)
+fair py-earth [![DOI](https://zenodo.org/badge/680433155.svg)](https://zenodo.org/doi/10.5281/zenodo.10595370)
+
 ========
 
 ## Installation
