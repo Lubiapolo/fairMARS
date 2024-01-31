@@ -1,4 +1,4 @@
-##fair py-earth [![DOI](https://zenodo.org/badge/680433155.svg)](https://zenodo.org/doi/10.5281/zenodo.10595370)
+## fair py-earth [![DOI](https://zenodo.org/badge/680433155.svg)](https://zenodo.org/doi/10.5281/zenodo.10595370)
 
 ========
 
