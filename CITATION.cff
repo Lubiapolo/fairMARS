@@ -1,13 +1,17 @@
-cff-version: 0.1.0
-message: "If you use this software, please cite it as below."
+abstract: '<ul>
+
+  <li>fairMARS: Py-earth Package (Rudy 2016) Enhanced with Fairness Components for
+  fair Multivariate Adaptive Regression Splines (MARS) implementation</li>
+
+  </ul>'
 authors:
-  - family-names: Haghighat
-    given-names: Parian
-    orcid: https://orcid.org/0000-0003-1889-5263
-title: "fairMARS: Py-earth Package Enhanced with Fairness Components for fair Multivariate Adaptive Regression Splines (MARS) implementation"
+- family-names: Parian Haghighat
+cff-version: 1.2.0
+date-released: '2024-01-31'
+doi: 10.5281/zenodo.10595371
+license:
+- mit
+title: 'fairMARS: Py-earth Package Enhanced with Fairness Components for fair Multivariate
+  Adaptive Regression Splines (MARS) implementation'
+type: software
 version: 0.1.0
-identifiers:
-  - type: doi
-    value: 10.5281/zenodo.10595371
-date-released: 2024-01-31
-url: "https://doi.org/10.5281/zenodo.10595371"
